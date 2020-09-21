@@ -4,6 +4,7 @@
 #include <QTime>
 #include <QFileDialog>
 #include <QDesktopServices>
+#include <QThread>
 #include <thread>
 #include <functional>
 #include <httplib.h>
@@ -20,4 +21,7 @@ public:
 private:
     httplib::Server server;
     Ui::SimpleHttpServerClass ui;
+
+signals:
+    void serverStopped(bool);
 };

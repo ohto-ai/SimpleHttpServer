@@ -32,29 +32,35 @@ SimpleHttpServer::SimpleHttpServer(QWidget *parent)
         {
             QDesktopServices::openUrl(QUrl("https://thatboy.info"));
         });
+
+    connect(this, &SimpleHttpServer::serverStopped, this, [&](bool b)
+        {
+            log(QString::asprintf("服务器停止.%s", b ? "" : "发生错误."));
+            ui.ipLineEdit->setEnabled(true);
+            ui.portLineEdit->setEnabled(true);
+            ui.pathLineEdit->setEnabled(true);
+            ui.startPushButton->setEnabled(true);
+            ui.stopPushButton->setEnabled(false);
+        }, static_cast<Qt::ConnectionType>(Qt::QueuedConnection | Qt::UniqueConnection));
     connect(ui.startPushButton, &QPushButton::clicked, [&]()
         {
-            if (server.is_running())
-                server.stop();
-            server.bind_to_port(ui.ipLineEdit->text().toStdString().c_str()
-                , ui.portLineEdit->text().toInt());
-            server.remove_mount_point("/");
-            server.set_base_dir(ui.pathLineEdit->text().toStdString().c_str());
             log(QString::asprintf("网站根目录 %s.", ui.pathLineEdit->text().toStdString().c_str()));
+
+			server.stop();
+			server.bind_to_port(ui.ipLineEdit->text().toStdString().c_str()
+				, ui.portLineEdit->text().toInt());
+			server.remove_mount_point("/");
+			server.set_base_dir(ui.pathLineEdit->text().toStdString().c_str());
+
+			ui.ipLineEdit->setEnabled(false);
+			ui.portLineEdit->setEnabled(false);
+			ui.pathLineEdit->setEnabled(false);
+			ui.startPushButton->setEnabled(false);
+			ui.stopPushButton->setEnabled(true);
+
             std::thread th([&]()
                 {
-                    ui.ipLineEdit->setEnabled(false);
-                    ui.portLineEdit->setEnabled(false);
-                    ui.pathLineEdit->setEnabled(false);
-                    ui.startPushButton->setEnabled(false);
-                    ui.stopPushButton->setEnabled(true);
-                    bool b = server.listen_after_bind();
-                    log(QString::asprintf("服务器停止.%s", b ? "" : "发生错误."));
-                    ui.ipLineEdit->setEnabled(true);
-                    ui.portLineEdit->setEnabled(true);
-                    ui.pathLineEdit->setEnabled(true);
-                    ui.startPushButton->setEnabled(true);
-                    ui.stopPushButton->setEnabled(false);
+                    emit serverStopped(server.listen_after_bind());
                 });
             th.detach();
             log(QString::asprintf("服务器已在 %s:%d 开放.", ui.ipLineEdit->text().toStdString().c_str(), ui.portLineEdit->text().toInt()));
