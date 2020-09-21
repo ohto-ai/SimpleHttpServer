@@ -1,3 +1,7 @@
+#if defined(_MSC_VER) && (_MSC_VER >= 1600)    
+# pragma execution_character_set("utf-8")    
+#endif
+
 #include "SimpleHttpServer.h"
 
 SimpleHttpServer::SimpleHttpServer(QWidget *parent)
@@ -6,18 +10,18 @@ SimpleHttpServer::SimpleHttpServer(QWidget *parent)
     ui.setupUi(this);
     server.set_error_handler([&](const httplib::Request& req, httplib::Response& res)
         {
-            log(QString::asprintf("ERROR:(%s:%d)target %s.", req.remote_addr.c_str(), req.remote_port, req.target.c_str()));
+            log(QString::asprintf("[ERROR](%s:%d)target %s.", req.remote_addr.c_str(), req.remote_port, req.target.c_str()));
         });
 
     ui.stopPushButton->setEnabled(false);
 
     connect(ui.pathLineEdit, &SupperLineEdit::clicked, [&]()
         {
-            auto path{ QFileDialog::getExistingDirectory(this, "Base of website.", "") };
+            auto path{ QFileDialog::getExistingDirectory(this, "网站根目录", "") };
             if (!path.isEmpty())
             {
                 ui.pathLineEdit->setText(path);
-                ui.pathLineEdit->setToolTip(path);
+                ui.pathLineEdit->setToolTip(path+"\r\n【不支持中文路径】");
             }
         });
     connect(ui.serverLabel, &SupperLabel::leftClicked, [&]()
@@ -36,7 +40,7 @@ SimpleHttpServer::SimpleHttpServer(QWidget *parent)
                 , ui.portLineEdit->text().toInt());
             server.remove_mount_point("/");
             server.set_base_dir(ui.pathLineEdit->text().toStdString().c_str());
-            log(QString::asprintf("Locate at %s", ui.pathLineEdit->text().toStdString().c_str()));
+            log(QString::asprintf("网站根目录 %s.", ui.pathLineEdit->text().toStdString().c_str()));
             std::thread th([&]()
                 {
                     ui.ipLineEdit->setEnabled(false);
@@ -45,7 +49,7 @@ SimpleHttpServer::SimpleHttpServer(QWidget *parent)
                     ui.startPushButton->setEnabled(false);
                     ui.stopPushButton->setEnabled(true);
                     bool b = server.listen_after_bind();
-                    log(QString::asprintf("Server stopped.%s", b ? "" : "Error occurred."));
+                    log(QString::asprintf("服务器停止.%s", b ? "" : "发生错误."));
                     ui.ipLineEdit->setEnabled(true);
                     ui.portLineEdit->setEnabled(true);
                     ui.pathLineEdit->setEnabled(true);
@@ -53,7 +57,7 @@ SimpleHttpServer::SimpleHttpServer(QWidget *parent)
                     ui.stopPushButton->setEnabled(false);
                 });
             th.detach();
-            log(QString::asprintf("Server open at %s:%d", ui.ipLineEdit->text().toStdString().c_str(), ui.portLineEdit->text().toInt()));
+            log(QString::asprintf("服务器已在 %s:%d 开放.", ui.ipLineEdit->text().toStdString().c_str(), ui.portLineEdit->text().toInt()));
 
         });
     connect(ui.stopPushButton, &QPushButton::clicked, std::bind(&httplib::Server::stop, &server));
