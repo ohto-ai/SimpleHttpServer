@@ -41,7 +41,7 @@ SimpleHttpServer::SimpleHttpServer(QWidget *parent)
             ui.pathLineEdit->setEnabled(true);
             ui.startPushButton->setEnabled(true);
             ui.stopPushButton->setEnabled(false);
-        }, static_cast<Qt::ConnectionType>(Qt::QueuedConnection | Qt::UniqueConnection));
+        }, Qt::QueuedConnection);
     connect(ui.startPushButton, &QPushButton::clicked, [&]()
         {
             log(QString::asprintf("ÍøÕ¾¸ùÄ¿Â¼ %s.", ui.pathLineEdit->text().toStdString().c_str()));
