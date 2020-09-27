@@ -13,6 +13,11 @@ SimpleHttpServer::SimpleHttpServer(QWidget *parent)
             log(QString::asprintf("[ERROR](%s:%d)target %s.", req.remote_addr.c_str(), req.remote_port, req.target.c_str()));
         });
 
+    server.set_logger([&](const httplib::Request& req, const httplib::Response& res)
+        {
+            log(QString::asprintf("[%s]target:%s respons:%s", req.remote_addr.c_str(), req.target.c_str(), res.body.c_str()));
+        });
+
     ui.stopPushButton->setEnabled(false);
 
     connect(ui.pathLineEdit, &SupperLineEdit::clicked, [&]()
@@ -69,7 +74,7 @@ SimpleHttpServer::SimpleHttpServer(QWidget *parent)
     connect(ui.stopPushButton, &QPushButton::clicked, std::bind(&httplib::Server::stop, &server));
 }
 
-void SimpleHttpServer::log(const QString& s)
+Q_INVOKABLE void SimpleHttpServer::log(const QString& s)
 {
     ui.logTextBrowser->moveCursor(QTextCursor::End);
     ui.logTextBrowser->append(QTime::currentTime().toString("[HH:mm:ss]") + s);
