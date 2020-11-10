@@ -1,4 +1,4 @@
-#include "SimpleHttpServer.h"
+﻿#include "SimpleHttpServer.h"
 #include <QtWidgets/QApplication>
 
 int main(int argc, char *argv[])
