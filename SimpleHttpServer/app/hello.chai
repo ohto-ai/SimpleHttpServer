@@ -1,5 +1,5 @@
 def Get(Request request, Response response)
 {
-    response.set_content("<head><meta charset=\"UTF-8\"></head><h3>Shit</h3>" + "<h2>Method: " + request.method + "</h2>" + , "text/html");
+    response.set_content("<head><meta charset=\"UTF-8\"></head><h3>Shit</h3>" + "<h2>Method: " + request.method + "</h2>", "text/html");
 }
 var pattern = "/hello";
