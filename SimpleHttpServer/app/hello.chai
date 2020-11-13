@@ -1,0 +1,5 @@
+def Get(Request request, Response response)
+{
+    response.set_content("<head><meta charset=\"UTF-8\"></head><h3>Shit</h3>", "text/html");
+}
+var pattern = "/hello";

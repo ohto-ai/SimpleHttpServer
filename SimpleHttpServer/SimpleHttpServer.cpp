@@ -3,44 +3,39 @@
 #endif
 
 #include "SimpleHttpServer.h"
-#include <chaiscript/chaiscript.hpp>
 
 std::tuple<int, int, int> SimpleHttpServer::loadServerApplication()
 {
     auto serverDir = QDir(ui.pathLineEdit->text() + "/app");
+    const QStringList chaiApplicationFilters = { "*.chai", "*.chaiapplication" ,"*.chaiapp", "*.chp" };
+    auto appTotal = 0, appSuccess = 0, appFailed = 0;
+	
     serverDir.setFilter(QDir::Files | QDir::NoSymLinks);
-    QStringList chaiApplicationFilters = { "*.chaiapplication" ,"*.chaiapp", "*.chp" };
-    // ReSharper disable once StringLiteralTypo
     serverDir.setNameFilters(chaiApplicationFilters);
     auto appInfoList = serverDir.entryInfoList(chaiApplicationFilters);
-    int appTotal = 0, appSuccess = 0, appFailed = 0;
+	
+    log("Loading applications in " + serverDir.absolutePath());
+    	
     chaiScripts.clear();
-
-    log("正在从" + serverDir.absolutePath() + "加载小程序...");
-
-    QString chaiFilePathList;
-    for (const auto& appFileInfo : appInfoList)
-        chaiFilePathList += appFileInfo.absoluteFilePath();
     for (const auto& appFileInfo : appInfoList) 
     {
         try {
-            chaiScripts.push_back(std::make_shared<chaiscript::ChaiScript>());
-            auto& chai = *chaiScripts.back();
-            auto chaiFilePath = appFileInfo.absoluteFilePath().toStdString();
-            chai.use(chaiFilePath);
-            auto path = chai.eval<std::string>("pattern");
+            auto chai_ptr = std::make_shared<chaiscript::ChaiScript>();
+            auto& chai = *chai_ptr;
         	
+            chai.add(chaiModuleHttpPtr);
+            chai.add(chaiModuleStringPtr);
+            chai.add(chaiscript::fun([=](const std::string& message) {log("<" + appFileInfo.fileName() + ">: " + message.c_str()); }), "log");
+
+            chai.use(appFileInfo.absoluteFilePath().toStdString());
+        	
+            auto path = chai.eval<std::string>("pattern");        	
             bool hasGetMethod = false;
             bool hasPostMethod = false;
+
             try
             {
-                auto chaiGet = chai.eval <std::function<void(std::string, std::string&, std::string&)>>("Get");
-            	server->Get(path.c_str(), [chaiGet](const httplib::Request& request, httplib::Response& response)
-                    {
-                        std::string res, type;
-                        chaiGet(request.body, res, type);
-                        response.set_content(res, type.c_str());
-                    });
+            	server->Get(path.c_str(), chai.eval<httplib::Server::Handler>("Get"));
                 hasGetMethod = true;
             }
             catch (chaiscript::exception::eval_error e)
@@ -51,13 +46,7 @@ std::tuple<int, int, int> SimpleHttpServer::loadServerApplication()
         	}
             try
             {
-                auto chaiPost = chai.eval <std::function<void(std::string, std::string&, std::string&)>>("Post");
-                server->Post(path.c_str(), [chaiPost](const httplib::Request& request, httplib::Response& response)
-                    {
-                        std::string res, type;
-                        chaiPost(request.body, res, type);
-                        response.set_content(res, type.c_str());
-                    });
+                server->Post(path.c_str(), chai.eval<httplib::Server::Handler>("Post"));
                 hasPostMethod = true;
             }
             catch (chaiscript::exception::eval_error e)
@@ -67,11 +56,19 @@ std::tuple<int, int, int> SimpleHttpServer::loadServerApplication()
             {
             }
             if (hasGetMethod || hasPostMethod)
+            {
+                            	
+                chaiScripts.push_back(chai_ptr);
+                log(appFileInfo.fileName() + " loaded.");
                 appSuccess++;
+            }
         }
-        catch (...)
+        catch (chaiscript::exception::eval_error e)
         {
-            log("编译小程序" + appFileInfo.fileName() + "时发生错误!请检查其语法!");
+            log("Application " + appFileInfo.fileName() + " load failed!");
+            log(e.what());
+            log(QString::asprintf("line: %d, col: %d.\n", e.start_position.line, e.start_position.column));
+            
             appFailed++;
         }
         appTotal++;
@@ -84,6 +81,73 @@ SimpleHttpServer::SimpleHttpServer(QWidget *parent)
 {
     ui.setupUi(this);
 
+    using chaiscript::Module;
+    using chaiscript::ModulePtr;
+    using chaiscript::ChaiScript;
+    using chaiscript::type_conversion;
+    using chaiscript::fun;
+    using chaiscript::constructor;
+    using httplib::Request;
+    using httplib::Response;
+
+    auto& chaiModuleHttp = *chaiModuleHttpPtr;
+    auto& chaiModuleString = *chaiModuleStringPtr;
+	
+    chaiModuleString
+        .add(type_conversion<const char*, std::string>())
+        .add(type_conversion<std::string, const char*>([](const std::string& s) {return s.c_str(); }));
+
+    chaiscript::utility::add_class<Request>(chaiModuleHttp, "Request"
+        , {
+            constructor<Request()>()
+            , constructor<Request(const Request&)>()
+        }
+        , {
+            // variable
+            {fun(&Request::method), "method"}
+            , {fun(&Request::path), "path"}
+            , {fun(&Request::body), "body"}
+            , {fun(&Request::remote_addr), "remote_addr"}
+            , {fun(&Request::remote_port), "remote_port"}
+            , {fun(&Request::version), "version"}
+            , {fun(&Request::target), "target"}
+            , {fun(&Request::redirect_count), "redirect_count"}
+            , {fun(&Request::content_length), "content_length"}
+        // method
+        , {fun(&Request::has_header), "has_header"}
+        , {fun(static_cast<std::string(Request::*)(const char*, size_t) const>(&Request::get_header_value)), "get_header_value"}
+        , {fun(&Request::get_header_value_count), "get_header_value_count"}
+        , {fun(static_cast<void(Request::*)(const char*, const char*)>(&Request::set_header)), "set_header"}
+        , {fun(&Request::get_param_value), "get_param_value"}
+        , {fun(&Request::get_param_value_count), "get_param_value_count"}
+        , {fun(&Request::is_multipart_form_data), "is_multipart_form_data"}
+        , {fun(&Request::has_file), "has_file"}
+        });
+
+    chaiscript::utility::add_class<Response>(chaiModuleHttp, "Response"
+        , {
+            constructor<Response()>()
+            , constructor<Response(const Response&)>()
+            , constructor<Response(Response&&)>()
+        },
+        {
+            // variable
+            {fun(&Response::version), "version"}
+            , {fun(&Response::status), "status"}
+            , {fun(&Response::reason), "reason"}
+            , {fun(&Response::body), "body"}
+        // method
+        , {fun(&Response::has_header), "has_header"}
+        , {fun(static_cast<std::string(Response::*)(const char*, size_t)const>(&Response::get_header_value)), "get_header_value"}
+        , {fun(&Response::get_header_value_count), "get_header_value_count"}
+        , {fun(static_cast<void(Response::*)(const char*, const char*)>(&Response::set_header)), "set_header"}
+        , {fun(static_cast<void(Response::*)(const char*, int)>(&Response::set_redirect)), "set_redirect"}
+        , {fun(static_cast<void(Response::*)(std::string, const char*)>(&Response::set_content)), "set_content"}
+        }
+        );
+
+
+	
     ui.stopPushButton->setEnabled(false);
 
     connect(ui.pathLineEdit, &SupperLineEdit::clicked, [&]()
@@ -101,7 +165,7 @@ SimpleHttpServer::SimpleHttpServer(QWidget *parent)
         });
     connect(ui.serverLabel, &SupperLabel::rightClicked, [&]()
         {
-            QDesktopServices::openUrl(QUrl("https://thatboy.info"));
+            QDesktopServices::openUrl(QUrl("http://thatboy.info"));
         });
 
     connect(this, &SimpleHttpServer::serverStopped, this, [&](bool b)
@@ -129,26 +193,20 @@ SimpleHttpServer::SimpleHttpServer(QWidget *parent)
                 {
                     log(QString::asprintf("[ERROR](%s:%d)target %s.", req.remote_addr.c_str(), req.remote_port, req.target.c_str()));
                 });
-
-            //server->set_logger([&](const httplib::Request& req, const httplib::Response& res)
-            //    {
-            //        log(QString::asprintf("[%s]target:%s respons:%s", req.remote_addr.c_str(), req.target.c_str(), res.body.c_str()));
-            //    });
     	
 			server->bind_to_port(ui.ipLineEdit->text().toStdString().c_str()
 				, ui.portLineEdit->text().toInt());
 			server->remove_mount_point("/");
 			server->set_base_dir(ui.pathLineEdit->text().toStdString().c_str());
 
-
-            std::thread th([&]()
-                {
-                    auto mark = server->listen_after_bind();
-                    server.reset();
-                    chaiScripts.clear();
-                    emit serverStopped(mark);
-                });
-            th.detach();
+            serverFuture = std::async(std::launch::async, [&]()
+            {
+	            const auto mark = server->listen_after_bind();
+	            server.reset();
+	            chaiScripts.clear();
+	            emit serverStopped(mark);
+            }).share();
+    	
             log(QString::asprintf("服务器已在 %s:%d 开放.", ui.ipLineEdit->text().toStdString().c_str(), ui.portLineEdit->text().toInt()));
 
 
@@ -172,4 +230,15 @@ Q_INVOKABLE void SimpleHttpServer::log(const std::string& s)
 Q_INVOKABLE void SimpleHttpServer::log(const char* s)
 {
     return log(QString::fromStdString(s));
+}
+
+void SimpleHttpServer::closeEvent(QCloseEvent*e)
+{
+    if (server)
+        server->stop();
+    if(serverFuture.valid())
+        serverFuture.wait();
+    server.reset();
+    chaiScripts.clear();
+    QWidget::closeEvent(e);
 }

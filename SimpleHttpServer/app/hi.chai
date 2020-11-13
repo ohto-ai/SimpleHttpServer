@@ -1,0 +1,6 @@
+def Get(Request request, Response response)
+{
+    response.set_content("<head><meta charset=\"UTF-8\"></head><h3>Fu*k</h3>", "text/html");
+}
+log("If you see this tip, then you've loaded me.");
+var pattern = "/hi";
